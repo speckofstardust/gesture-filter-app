@@ -50,20 +50,27 @@ function angleDeg(origin, a, b) {
   return Math.acos(Math.max(-1, Math.min(1, dot / mag))) * (180 / Math.PI);
 }
 
-function isLShape(lm) {
-  const wrist     = lm[LM.WRIST];
-  const thumbTip  = lm[LM.THUMB_TIP];
-  const indexTip  = lm[LM.INDEX_TIP];
+// lm = mirrored landmarks (x already flipped to match screen)
+// label = 'Left' | 'Right' (assigned by screen position, leftmost hand = 'Left')
+function isLShape(lm, label) {
+  const wrist    = lm[LM.WRIST];
+  const thumbTip = lm[LM.THUMB_TIP];
+  const indexTip = lm[LM.INDEX_TIP];
 
-  // Angle at the wrist between the two extended fingers
+  // Thumb must point inward toward the center of the frame.
+  // Left hand (screen left)  → thumb tip must be to the RIGHT of the wrist (higher x)
+  // Right hand (screen right) → thumb tip must be to the LEFT  of the wrist (lower x)
+  const thumbDx = thumbTip.x - wrist.x;
+  if (label === 'Left'  && thumbDx <= 0) return false;
+  if (label === 'Right' && thumbDx >= 0) return false;
+
+  // Angle at the wrist between thumb and index must look like an L
   const angle = angleDeg(wrist, thumbTip, indexTip);
   if (angle < 55 || angle > 125) return false;
 
-  // Reference: how far the extended index tip is from the wrist
+  // Middle / ring / pinky must be curled relative to the extended index
   const indexDist = dist2D(wrist, indexTip);
-
-  // Middle / ring / pinky tips must be significantly closer to the wrist
-  const CURL_RATIO = 0.8;
+  const CURL_RATIO = 0.7;
   const middleCurled = dist2D(wrist, lm[LM.MIDDLE_TIP]) < indexDist * CURL_RATIO;
   const ringCurled   = dist2D(wrist, lm[LM.RING_TIP])   < indexDist * CURL_RATIO;
   const pinkyCurled  = dist2D(wrist, lm[LM.PINKY_TIP])  < indexDist * CURL_RATIO;
@@ -104,23 +111,29 @@ hands.onResults(results => {
   // Draw mirrored video frame as the background
   ctx.save();
   ctx.translate(w, 0);
-  ctx.scale(-1, 1);
+  ctx.scale(-1, 1); //to mirror the output video
   ctx.drawImage(results.image, 0, 0, w, h);
   ctx.restore();
 
   const seenLabels = new Set();
 
-  if (results.multiHandLandmarks && results.multiHandedness) {
-    console.log('Hands detected:', results.multiHandLandmarks.length);
+  if (results.multiHandLandmarks) {
+    // Assign Left/Right by screen x-position rather than MediaPipe's handedness label.
+    // MediaPipe's label can flip between frames for the same hand on a front-facing camera,
+    // which would spuriously activate both gestureState objects from a single hand.
+    const handList = results.multiHandLandmarks.map(landmarks => ({
+      landmarks,
+      mirrored: landmarks.map(lm => ({ x: 1 - lm.x, y: lm.y, z: lm.z })),
+    }));
+    handList.sort((a, b) => a.mirrored[LM.WRIST].x - b.mirrored[LM.WRIST].x);
 
-    results.multiHandLandmarks.forEach((landmarks, i) => {
-      const label  = results.multiHandedness[i].label; // "Left" or "Right"
+    console.log('Hands detected:', handList.length);
+
+    handList.forEach(({ mirrored }, idx) => {
+      const label = idx === 0 ? 'Left' : 'Right';
       seenLabels.add(label);
 
-      const active = tickGesture(label, isLShape(landmarks));
-
-      // Flip x so skeleton aligns with the mirrored video
-      const mirrored = landmarks.map(lm => ({ x: 1 - lm.x, y: lm.y, z: lm.z }));
+      const active = tickGesture(label, isLShape(mirrored, label));
 
       // Update smoothed wrist whenever this hand is visible (not just when active)
       lerpWrist(label, mirrored[LM.WRIST].x * w, mirrored[LM.WRIST].y * h);
