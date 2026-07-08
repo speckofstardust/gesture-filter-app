@@ -191,6 +191,18 @@ hands.onResults(results => {
   // Render persisted zones over the live video, before hand skeletons
   for (const zone of zones) {
     applyZoneFilter(zone);
+
+    // Flash the border for ~700 ms after a zone is created — 1.5 pulses, decaying
+    const elapsed = performance.now() - zone.createdAt;
+    if (elapsed < 700) {
+      const t = elapsed / 700;
+      const alpha = (1 - t) * Math.abs(Math.sin(t * Math.PI * 3));
+      ctx.save();
+      ctx.strokeStyle = `rgba(0, 255, 180, ${alpha})`;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(zone.rect.x, zone.rect.y, zone.rect.w, zone.rect.h);
+      ctx.restore();
+    }
   }
 
   const seenLabels = new Set();
@@ -278,7 +290,7 @@ hands.onResults(results => {
   // Falling edge: gesture just released → commit the zone with whichever
   // filter is currently selected in the UI panel
   if (bothHandsWasActive && !bothHandsActive && lastLiveRect) {
-    zones.push({ rect: lastLiveRect, filter: activeFilter });
+    zones.push({ rect: lastLiveRect, filter: activeFilter, createdAt: performance.now() });
     lastLiveRect = null;
   }
   bothHandsWasActive = bothHandsActive;
