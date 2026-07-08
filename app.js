@@ -85,6 +85,59 @@ function isLShape(lm, label) {
   return middleCurled && ringCurled && pinkyCurled;
 }
 
+// Currently selected filter — updated by the UI panel radio buttons
+let activeFilter = 'grayscale';
+
+// Each filter function receives the pixel buffer (Uint8ClampedArray) and
+// transforms it in-place, blending at reduced strength so faces stay visible.
+const filterFns = {
+  grayscale(d) {
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      // Blend 65% toward grayscale, 35% original color so faces stay recognizable
+      d[i]     = lum * 0.65 + d[i]     * 0.35;
+      d[i + 1] = lum * 0.65 + d[i + 1] * 0.35;
+      d[i + 2] = lum * 0.65 + d[i + 2] * 0.35;
+    }
+  },
+  sepia(d) {
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const sr = Math.min(255, r * 0.393 + g * 0.769 + b * 0.189);
+      const sg = Math.min(255, r * 0.349 + g * 0.686 + b * 0.168);
+      const sb = Math.min(255, r * 0.272 + g * 0.534 + b * 0.131);
+      d[i]     = sr * 0.60 + r * 0.40;
+      d[i + 1] = sg * 0.60 + g * 0.40;
+      d[i + 2] = sb * 0.60 + b * 0.40;
+    }
+  },
+  cool(d) {
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], b = d[i + 2];
+      const cr = r - 20, cb = Math.min(255, b + 30);
+      d[i]     = cr * 0.60 + r * 0.40;
+      d[i + 2] = cb * 0.60 + b * 0.40;
+    }
+  },
+  warm(d) {
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], b = d[i + 2];
+      const wr = Math.min(255, r + 30), wb = b - 20;
+      d[i]     = wr * 0.60 + r * 0.40;
+      d[i + 2] = wb * 0.60 + b * 0.40;
+    }
+  },
+  invert(d) {
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      // Blended at 55% so an inverted face stays clearly readable
+      d[i]     = (255 - r) * 0.55 + r * 0.45;
+      d[i + 1] = (255 - g) * 0.55 + g * 0.45;
+      d[i + 2] = (255 - b) * 0.55 + b * 0.45;
+    }
+  },
+};
+
 function applyZoneFilter(zone) {
   const cx = Math.max(0, Math.round(zone.rect.x));
   const cy = Math.max(0, Math.round(zone.rect.y));
@@ -93,18 +146,8 @@ function applyZoneFilter(zone) {
   if (cw <= 0 || ch <= 0) return;
 
   const imageData = ctx.getImageData(cx, cy, cw, ch);
-  const d = imageData.data;
-
-  if (zone.filter === 'grayscale') {
-    for (let i = 0; i < d.length; i += 4) {
-      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      // Blend 65% toward grayscale, 35% original color so faces stay recognizable
-      d[i]     = lum * 0.65 + d[i]     * 0.35;
-      d[i + 1] = lum * 0.65 + d[i + 1] * 0.35;
-      d[i + 2] = lum * 0.65 + d[i + 2] * 0.35;
-    }
-  }
-
+  const fn = filterFns[zone.filter];
+  if (fn) fn(imageData.data);
   ctx.putImageData(imageData, cx, cy);
 }
 
@@ -232,9 +275,10 @@ hands.onResults(results => {
     if (!gestureState.Right.active) { smoothWrist.Right.x = 0; smoothWrist.Right.y = 0; }
   }
 
-  // Falling edge: gesture just released → commit the zone
+  // Falling edge: gesture just released → commit the zone with whichever
+  // filter is currently selected in the UI panel
   if (bothHandsWasActive && !bothHandsActive && lastLiveRect) {
-    zones.push({ rect: lastLiveRect, filter: 'grayscale' });
+    zones.push({ rect: lastLiveRect, filter: activeFilter });
     lastLiveRect = null;
   }
   bothHandsWasActive = bothHandsActive;
@@ -254,3 +298,15 @@ const camera = new Camera(video, {
 });
 
 camera.start().catch(err => console.error('Camera start failed:', err));
+
+// UI panel wiring
+document.querySelectorAll('input[name="filter"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    activeFilter = radio.value;
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    radio.closest('.filter-btn').classList.add('active');
+  });
+});
+
+document.getElementById('btn-remove-last').addEventListener('click', () => zones.pop());
+document.getElementById('btn-clear-all').addEventListener('click', () => zones.length = 0);

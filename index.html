@@ -14,6 +14,22 @@
 <body>
   <video id="webcam" autoplay muted playsinline></video>
   <canvas id="overlay"></canvas>
+
+  <div id="ui-panel">
+    <div id="filter-group">
+      <span class="group-label">Filter</span>
+      <label class="filter-btn active"><input type="radio" name="filter" value="grayscale" checked> Grayscale</label>
+      <label class="filter-btn"><input type="radio" name="filter" value="sepia"> Sepia</label>
+      <label class="filter-btn"><input type="radio" name="filter" value="cool"> Cool Tint</label>
+      <label class="filter-btn"><input type="radio" name="filter" value="warm"> Warm Tint</label>
+      <label class="filter-btn"><input type="radio" name="filter" value="invert"> Invert (mild)</label>
+    </div>
+    <div id="action-group">
+      <button id="btn-remove-last">Remove Last Zone</button>
+      <button id="btn-clear-all">Clear All Zones</button>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
