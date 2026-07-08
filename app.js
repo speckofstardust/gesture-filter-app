@@ -21,6 +21,21 @@ const gestureState = {
   Right: { active: false, onCount: 0, offCount: 0 },
 };
 
+// Smoothed wrist positions in canvas pixel space, one per hand label
+const smoothWrist = {
+  Left:  { x: 0, y: 0 },
+  Right: { x: 0, y: 0 },
+};
+const WRIST_LERP = 0.25; // fraction to move toward target each frame
+
+function lerpWrist(label, targetX, targetY) {
+  const s = smoothWrist[label];
+  // Snap on first contact so the box doesn't slide in from (0,0)
+  if (s.x === 0 && s.y === 0) { s.x = targetX; s.y = targetY; return; }
+  s.x += (targetX - s.x) * WRIST_LERP;
+  s.y += (targetY - s.y) * WRIST_LERP;
+}
+
 function dist2D(a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
   return Math.sqrt(dx * dx + dy * dy);
@@ -107,6 +122,9 @@ hands.onResults(results => {
       // Flip x so skeleton aligns with the mirrored video
       const mirrored = landmarks.map(lm => ({ x: 1 - lm.x, y: lm.y, z: lm.z }));
 
+      // Update smoothed wrist whenever this hand is visible (not just when active)
+      lerpWrist(label, mirrored[LM.WRIST].x * w, mirrored[LM.WRIST].y * h);
+
       const connectorColor = active ? '#00FF00' : '#888888';
       const dotColor       = active ? '#FFFF00' : '#FF4444';
 
@@ -124,6 +142,22 @@ hands.onResults(results => {
         ctx.fillText('L',   wx + 14, wy - 14);
       }
     });
+  }
+
+  // Draw the live selection rectangle when both hands are holding the L-gesture
+  if (gestureState.Left.active && gestureState.Right.active) {
+    const x1 = smoothWrist.Left.x,  y1 = smoothWrist.Left.y;
+    const x2 = smoothWrist.Right.x, y2 = smoothWrist.Right.y;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 255, 180, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+    ctx.restore();
+  } else {
+    // Reset smoothed positions when a hand leaves so there's no stale snap on re-entry
+    if (!gestureState.Left.active)  { smoothWrist.Left.x  = 0; smoothWrist.Left.y  = 0; }
+    if (!gestureState.Right.active) { smoothWrist.Right.x = 0; smoothWrist.Right.y = 0; }
   }
 
   // Tick off-counter for any hand label not present this frame
