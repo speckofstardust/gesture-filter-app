@@ -10,10 +10,15 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <!-- PixiJS v7 + pixi-filters v5 for vivid/trippy effects -->
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@7/dist/pixi.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi-filters@5/dist/browser/pixi-filters.js"></script>
 </head>
 <body>
   <video id="webcam" autoplay muted playsinline></video>
   <canvas id="overlay"></canvas>
+  <canvas id="pixi-canvas"></canvas>
 
   <div id="ui-panel">
     <div id="filter-group">
@@ -23,13 +28,18 @@
       <label class="filter-btn"><input type="radio" name="filter" value="cool"> Cool Tint</label>
       <label class="filter-btn"><input type="radio" name="filter" value="warm"> Warm Tint</label>
       <label class="filter-btn"><input type="radio" name="filter" value="invert"> Invert (mild)</label>
+      <label class="filter-btn vivid-btn"><input type="radio" name="filter" value="glitch"> Glitch</label>
+      <label class="filter-btn vivid-btn"><input type="radio" name="filter" value="rgbSplit"> RGB Split</label>
+      <label class="filter-btn vivid-btn"><input type="radio" name="filter" value="oldFilm"> Old Film</label>
+      <label class="filter-btn vivid-btn"><input type="radio" name="filter" value="crt"> CRT</label>
+      <label class="filter-btn vivid-btn"><input type="radio" name="filter" value="twist"> Twist</label>
     </div>
     <div id="action-group">
       <button id="btn-remove-last">Remove Last Zone</button>
       <button id="btn-clear-all">Clear All Zones</button>
     </div>
   </div>
-
+  <script src="trippy-filters.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

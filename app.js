@@ -30,6 +30,7 @@ const WRIST_LERP = 0.25; // fraction to move toward target each frame
 
 // Persisted filter zones created by completed framing gestures
 const zones = [];
+let nextZoneId = 0;
 // Tracks the last live rectangle while the gesture is held, and whether
 // the previous frame had the both-hands gesture active (for edge detection)
 let lastLiveRect = null;
@@ -88,6 +89,9 @@ function isLShape(lm, label) {
 // Currently selected filter — updated by the UI panel radio buttons
 let activeFilter = 'grayscale';
 
+// Vivid filter types handled by the PixiJS layer in trippy-filters.js
+const VIVID_FILTERS = new Set(['glitch', 'rgbSplit', 'oldFilm', 'crt', 'twist', 'zoomBlur']);
+
 // Each filter function receives the pixel buffer (Uint8ClampedArray) and
 // transforms it in-place, blending at reduced strength so faces stay visible.
 const filterFns = {
@@ -139,6 +143,7 @@ const filterFns = {
 };
 
 function applyZoneFilter(zone) {
+  if (VIVID_FILTERS.has(zone.filter)) return; // rendered by trippy-filters.js on #pixi-canvas
   const cx = Math.max(0, Math.round(zone.rect.x));
   const cy = Math.max(0, Math.round(zone.rect.y));
   const cw = Math.min(canvas.width  - cx, Math.round(zone.rect.w));
@@ -290,7 +295,11 @@ hands.onResults(results => {
   // Falling edge: gesture just released → commit the zone with whichever
   // filter is currently selected in the UI panel
   if (bothHandsWasActive && !bothHandsActive && lastLiveRect) {
-    zones.push({ rect: lastLiveRect, filter: activeFilter, createdAt: performance.now() });
+    const id = nextZoneId++;
+    zones.push({ rect: lastLiveRect, filter: activeFilter, createdAt: performance.now(), id });
+    if (VIVID_FILTERS.has(activeFilter) && window.TrippyFilters) {
+      window.TrippyFilters.addZone(id, lastLiveRect, activeFilter);
+    }
     lastLiveRect = null;
   }
   bothHandsWasActive = bothHandsActive;
@@ -320,5 +329,14 @@ document.querySelectorAll('input[name="filter"]').forEach(radio => {
   });
 });
 
-document.getElementById('btn-remove-last').addEventListener('click', () => zones.pop());
-document.getElementById('btn-clear-all').addEventListener('click', () => zones.length = 0);
+document.getElementById('btn-remove-last').addEventListener('click', () => {
+  const zone = zones.pop();
+  if (zone && VIVID_FILTERS.has(zone.filter) && window.TrippyFilters) {
+    window.TrippyFilters.removeZone(zone.id);
+  }
+});
+
+document.getElementById('btn-clear-all').addEventListener('click', () => {
+  if (window.TrippyFilters) window.TrippyFilters.clearAllZones();
+  zones.length = 0;
+});
