@@ -28,6 +28,13 @@ const smoothWrist = {
 };
 const WRIST_LERP = 0.25; // fraction to move toward target each frame
 
+// Persisted filter zones created by completed framing gestures
+const zones = [];
+// Tracks the last live rectangle while the gesture is held, and whether
+// the previous frame had the both-hands gesture active (for edge detection)
+let lastLiveRect = null;
+let bothHandsWasActive = false;
+
 function lerpWrist(label, targetX, targetY) {
   const s = smoothWrist[label];
   // Snap on first contact so the box doesn't slide in from (0,0)
@@ -78,6 +85,29 @@ function isLShape(lm, label) {
   return middleCurled && ringCurled && pinkyCurled;
 }
 
+function applyZoneFilter(zone) {
+  const cx = Math.max(0, Math.round(zone.rect.x));
+  const cy = Math.max(0, Math.round(zone.rect.y));
+  const cw = Math.min(canvas.width  - cx, Math.round(zone.rect.w));
+  const ch = Math.min(canvas.height - cy, Math.round(zone.rect.h));
+  if (cw <= 0 || ch <= 0) return;
+
+  const imageData = ctx.getImageData(cx, cy, cw, ch);
+  const d = imageData.data;
+
+  if (zone.filter === 'grayscale') {
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      // Blend 65% toward grayscale, 35% original color so faces stay recognizable
+      d[i]     = lum * 0.65 + d[i]     * 0.35;
+      d[i + 1] = lum * 0.65 + d[i + 1] * 0.35;
+      d[i + 2] = lum * 0.65 + d[i + 2] * 0.35;
+    }
+  }
+
+  ctx.putImageData(imageData, cx, cy);
+}
+
 // Returns the smoothed active state after ticking the counter for this frame
 function tickGesture(label, detected) {
   const s = gestureState[label];
@@ -114,6 +144,11 @@ hands.onResults(results => {
   ctx.scale(-1, 1); //to mirror the output video
   ctx.drawImage(results.image, 0, 0, w, h);
   ctx.restore();
+
+  // Render persisted zones over the live video, before hand skeletons
+  for (const zone of zones) {
+    applyZoneFilter(zone);
+  }
 
   const seenLabels = new Set();
   // Stores this frame's mirrored landmarks per label so the rectangle check
@@ -173,20 +208,36 @@ hands.onResults(results => {
   const leftIndexUp  = currentMirrored.Left  && currentMirrored.Left[LM.INDEX_TIP].y  < currentMirrored.Left[LM.WRIST].y;
   const rightIndexUp = currentMirrored.Right && currentMirrored.Right[LM.INDEX_TIP].y < currentMirrored.Right[LM.WRIST].y;
   const oppositeEdges = leftIndexUp !== rightIndexUp;
-  if (gestureState.Left.active && gestureState.Right.active && oppositeEdges) {
+  const bothHandsActive = gestureState.Left.active && gestureState.Right.active && oppositeEdges;
+
+  if (bothHandsActive) {
     const x1 = smoothWrist.Left.x,  y1 = smoothWrist.Left.y;
     const x2 = smoothWrist.Right.x, y2 = smoothWrist.Right.y;
+
+    // Keep lastLiveRect in sync so we can commit it when the gesture releases
+    lastLiveRect = {
+      x: Math.min(x1, x2), y: Math.min(y1, y2),
+      w: Math.abs(x2 - x1), h: Math.abs(y2 - y1),
+    };
+
     ctx.save();
     ctx.strokeStyle = 'rgba(0, 255, 180, 0.9)';
     ctx.lineWidth = 2;
     ctx.setLineDash([8, 6]);
-    ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+    ctx.strokeRect(lastLiveRect.x, lastLiveRect.y, lastLiveRect.w, lastLiveRect.h);
     ctx.restore();
   } else {
     // Reset smoothed positions when a hand leaves so there's no stale snap on re-entry
     if (!gestureState.Left.active)  { smoothWrist.Left.x  = 0; smoothWrist.Left.y  = 0; }
     if (!gestureState.Right.active) { smoothWrist.Right.x = 0; smoothWrist.Right.y = 0; }
   }
+
+  // Falling edge: gesture just released → commit the zone
+  if (bothHandsWasActive && !bothHandsActive && lastLiveRect) {
+    zones.push({ rect: lastLiveRect, filter: 'grayscale' });
+    lastLiveRect = null;
+  }
+  bothHandsWasActive = bothHandsActive;
 
   // Tick off-counter for any hand label not present this frame
   for (const label of ['Left', 'Right']) {
