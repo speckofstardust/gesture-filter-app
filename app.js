@@ -130,7 +130,12 @@ hands.onResults(results => {
     console.log('Hands detected:', handList.length);
 
     handList.forEach(({ mirrored }, idx) => {
-      const label = idx === 0 ? 'Left' : 'Right';
+      // With two hands, assign by sort order. With one hand, assign by which
+      // side of the screen it's on — otherwise a lone right hand always gets
+      // labeled 'Left' and fails the inward-thumb direction check.
+      const label = handList.length === 2
+        ? (idx === 0 ? 'Left' : 'Right')
+        : (mirrored[LM.WRIST].x < 0.5 ? 'Left' : 'Right');
       seenLabels.add(label);
 
       const active = tickGesture(label, isLShape(mirrored, label));
