@@ -116,6 +116,9 @@ hands.onResults(results => {
   ctx.restore();
 
   const seenLabels = new Set();
+  // Stores this frame's mirrored landmarks per label so the rectangle check
+  // can read index-tip direction after the per-hand loop.
+  const currentMirrored = { Left: null, Right: null };
 
   if (results.multiHandLandmarks) {
     // Assign Left/Right by screen x-position rather than MediaPipe's handedness label.
@@ -137,6 +140,8 @@ hands.onResults(results => {
         ? (idx === 0 ? 'Left' : 'Right')
         : (mirrored[LM.WRIST].x < 0.5 ? 'Left' : 'Right');
       seenLabels.add(label);
+
+      currentMirrored[label] = mirrored;
 
       const active = tickGesture(label, isLShape(mirrored, label));
 
@@ -163,7 +168,12 @@ hands.onResults(results => {
   }
 
   // Draw the live selection rectangle when both hands are holding the L-gesture
-  if (gestureState.Left.active && gestureState.Right.active) {
+  // AND their index fingers point in opposite vertical directions, meaning one
+  // hand forms the top edge and the other forms the bottom edge of the frame.
+  const leftIndexUp  = currentMirrored.Left  && currentMirrored.Left[LM.INDEX_TIP].y  < currentMirrored.Left[LM.WRIST].y;
+  const rightIndexUp = currentMirrored.Right && currentMirrored.Right[LM.INDEX_TIP].y < currentMirrored.Right[LM.WRIST].y;
+  const oppositeEdges = leftIndexUp !== rightIndexUp;
+  if (gestureState.Left.active && gestureState.Right.active && oppositeEdges) {
     const x1 = smoothWrist.Left.x,  y1 = smoothWrist.Left.y;
     const x2 = smoothWrist.Right.x, y2 = smoothWrist.Right.y;
     ctx.save();
